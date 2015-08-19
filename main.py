@@ -4,7 +4,6 @@
 __author__ = 'ipetrash'
 
 
-from grab import Grab
 from urllib.parse import urljoin
 from urllib.request import urlopen, Request
 from parsing_captcha import CaptchaParser
@@ -14,6 +13,7 @@ import sys
 from PIL import Image
 from io import BytesIO
 import traceback
+from lxml import etree
 
 
 def get_logger(name, file='log.txt', encoding='utf8'):
@@ -33,6 +33,18 @@ def get_logger(name, file='log.txt', encoding='utf8'):
     log.addHandler(ch)
 
     return log
+
+
+def text_el(el):
+    if el is None:
+        return ''
+    elif isinstance(el, str):
+        return el.strip()
+
+    if el.text is None:
+        return ''
+    else:
+        return el.text.strip()
 
 
 from random import randint, choice
@@ -91,53 +103,7 @@ if __name__ == '__main__':
 
     logger.info('Страница загружена.')
 
-
-    from lxml import etree
-
-    # Вытаскиваем список строк таблицы с атрибутом class="pl", у строк должны быть вложены теги td
-    xpath = '//table[@class="pl"]/tr[td]'
-    # print(data.decode('cp1251'))
     tree = etree.HTML(data.decode('cp1251'))
-    rows = tree.xpath(xpath)
-
-    print(len(rows), rows)
-
-
-# from lxml import etree
-#
-# tree = etree.XML(xml) # Парсинг строки
-# #tree = etree.parse('1.xml') # Парсинг файла
-#
-# nodes = tree.xpath('/soft/os/item') # Открываем раздел
-# for node in nodes: # Перебираем элементы
-#     print node.tag,node.keys(),node.values()
-#     print 'name =',node.get('name') # Выводим параметр name
-#     print 'text =',[node.text] # Выводим текст элемента
-#
-# # Доступ к тексту напрямую, с указанием фильтра
-# print 'text1',tree.xpath('/soft/os/item[@name="linux"]/text()')
-# print 'text2',tree.xpath('/soft/os/item[2]/text()')
-# # Доступ к параметру напрямую
-# print 'dist',tree.xpath('/soft/os/item[@name="linux"]')[0].get('dist')
-# # Выборка по ключу
-# print 'dist by key',tree.xpath('//*[@name="windows"]')[0].get('dist')
-#
-# print 'iterfind:'
-# for node in tree.iterfind('.//item'): # поиск элементов
-#     print node.get('name')
-#
-# # Рекурсивный перебор элементов
-# print 'recursiely:'
-# def getn(node):
-#     print node.tag,node.keys()
-#     for n in node:
-#         getn(n)
-# getn(tree.getroottree().getroot())
-
-    quit()
-
-    # TODO: полностью заменить grab на lxml
-    g = Grab(data)
 
     proxy_list = list()
 
@@ -147,15 +113,15 @@ if __name__ == '__main__':
     logger.debug('Начинаю парсить загруженную страницу.\n')
 
     try:
-        rows = g.doc.select(xpath)
+        rows = tree.xpath(xpath)
         if len(rows) == 0:
             raise Exception('Список прокси пустой')
 
         for row in rows:
             logger.debug('Начинаю разбирать строку с прокси.')
-            ip, port, country, city, speed, proxy_type, anonymity, checked = row.select('td')
+            ip, port, country, city, speed, proxy_type, anonymity, checked = row.xpath('td')
 
-            port_img_src = port.select('img/@src').text()
+            port_img_src = port.xpath('img/@src')[0]
             port_img_src = urljoin(url, port_img_src)
             logger.debug('Скачиваю картинку с портом.')
             port_img = download_image(port_img_src)
@@ -170,10 +136,13 @@ if __name__ == '__main__':
                 logger.warn('Картинка распарсена не полностью. port: %s.\n', port)
                 continue
 
-            proxy_type = proxy_type.text().split(', ')
+            proxy_type = text_el(proxy_type).split(', ')
 
-            proxy = Proxy(ip.text(), port, country.text(), city.text(), speed.text(),
-                          proxy_type, anonymity.text(), checked.text())
+            country = country.xpath('div')[0]
+            speed = speed.xpath('div/div')[0]
+
+            proxy = Proxy(text_el(ip), port, text_el(country), text_el(city), text_el(speed),
+                          proxy_type, text_el(anonymity), text_el(checked))
 
             proxy_list.append(proxy)
 
