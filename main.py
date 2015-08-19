@@ -121,6 +121,7 @@ if __name__ == '__main__':
             logger.debug('Начинаю разбирать строку с прокси.')
             ip, port, country, city, speed, proxy_type, anonymity, checked = row.xpath('td')
 
+            # TODO: эти обращения к первому индексу выглядят некрасиво, нужно посмотреть аналоги в lxml
             port_img_src = port.xpath('img/@src')[0]
             port_img_src = urljoin(url, port_img_src)
             logger.debug('Скачиваю картинку с портом.')
@@ -138,6 +139,8 @@ if __name__ == '__main__':
 
             proxy_type = text_el(proxy_type).split(', ')
 
+            # TODO: эти дополнительные xpath-запросы и обращения к первому индексу выглядят некрасиво,
+            # нужно посмотреть аналоги в lxml
             country = country.xpath('div')[0]
             speed = speed.xpath('div/div')[0]
 
