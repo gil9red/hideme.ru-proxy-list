@@ -5,15 +5,12 @@
 __author__ = 'ipetrash'
 
 
-"""Скрипт разбирает капчи.
+"""Скрипт разбирает номер порта на картинке.
 
 Алгоритм разбора не умеет разбирать буквы, которые по вертикали не имеет просветов.
-Решением может быть улучшение алгоритма поиска просветов в функции border_letters или
-добавлением масок "слипшихся" букв.
 """
 
 
-from PIL import Image
 import hashlib
 
 
@@ -21,11 +18,12 @@ BLACK_PXL = 0
 WHITE_PXL = 255
 
 
-def clear_captcha(im):
-    """Функция очищает капчу от ненужного, оставляя только текст
+def clear_img(im):
+    """Функция очищает изображение от множества цветов, должно быть только 2 цвета: черный и белый.
+    Один для фона, другой для текста на картинке.
 
-    Вокруг текста капчи есть какой-то шум, в основном ближе к черному при L, а цвет текста
-    капчи колеблется к белому -- в основном 255, но как правило встречаются также, в диапазоне от
+    Вокруг текста изображения есть какой-то шум, в основном ближе к черному при L, а цвет текста
+    колеблется к белому -- в основном 255, но как правило встречаются также, в диапазоне от
     244 до 254 и чтобы убрать лишние пиксели и сделать фон чистом черным, а текст чисто белого цвета,
     сделаем простую проверку -- к какой половине пиксели ближе -- к черной или белой и к той, которая
     больше склоняется и закрасим в нее.
@@ -46,8 +44,8 @@ def clear_captcha(im):
                 im.putpixel((x, y), BLACK_PXL)
 
 
-def get_margins(im, text_captcha=BLACK_PXL):
-    """Функция для определения границ слова капчи"""
+def get_margins(im, text_color=BLACK_PXL):
+    """Функция для определения границ текста на картинке."""
 
     w, h = im.size
     left, right, top, bottom = w, -1, h, -1
@@ -56,7 +54,7 @@ def get_margins(im, text_captcha=BLACK_PXL):
         for x in range(w):
             pxl = im.getpixel((x, y))
 
-            if pxl == text_captcha:
+            if pxl == text_color:
                 if left > x:
                     left = x
 
@@ -72,14 +70,14 @@ def get_margins(im, text_captcha=BLACK_PXL):
     return left, right, top, bottom
 
 
-def crop_captcha_text(im):
-    """Функция вырезает из изображения текст капчи и возвращает его копию"""
+def crop_text(im):
+    """Функция вырезает из изображения текст и возвращает его копию"""
 
     left, right, top, bottom = get_margins(im)
     return im.crop((left, top, right+1, bottom+1))
 
 
-def border_letters(im, text_captcha=BLACK_PXL):
+def border_letters(im, text_color=BLACK_PXL):
     """Функция ищет просветы между буквами и возвращает координаты границ.
     Между двумя буквами вернется один и первый попавшийся просвет"""
 
@@ -105,7 +103,7 @@ def border_letters(im, text_captcha=BLACK_PXL):
 
             # Если наткнулись на белый пиксель, значит
             # тут не просвета, выходим из цикла
-            if pxl == text_captcha:
+            if pxl == text_color:
                 line = False
                 multi_line = False
                 break
@@ -117,10 +115,12 @@ def border_letters(im, text_captcha=BLACK_PXL):
     return lines
 
 
-def get_letters_from_captcha(im):
-    """Функция находит просветы между буквами капчи и вырезает буквы,
+def get_letters_from_img(im):
+    """Функция находит просветы между буквами изображения и вырезает буквы,
     предварительно обрезав вокруг каждой буквы фон, после функция
-    вернет список изображений букв"""
+    вернет список изображений букв.
+
+    """
 
     lines = border_letters(im)
 
@@ -131,10 +131,10 @@ def get_letters_from_captcha(im):
     top = 0
     bottom = h
 
-    # Границей последней буквы будет ширина капчи
+    # Границей последней буквы будет ширина изображения
     lines.append(w)
 
-    # Список для хранения букв капчи
+    # Список для хранения букв
     letters = []
 
     for line in lines:
@@ -145,7 +145,7 @@ def get_letters_from_captcha(im):
         letter_im = im.crop((left, top, right, bottom))
 
         # Убрезам фон вокруг буквы
-        letter_im = crop_captcha_text(letter_im)
+        letter_im = crop_text(letter_im)
 
         letters.append(letter_im)
 
@@ -172,7 +172,7 @@ def get_hash_mask_letter(letter_im):
     # Получим маску
     mask = ''.join(str_bitarr)
 
-    # Подсчитаем хеш маски и будем по хешу определять буквы капчи
+    # Подсчитаем хеш маски и будем по хешу определять буквы
     hash = hashlib.new('md5')
     hash.update(mask.encode())
     return hash.hexdigest()
@@ -182,12 +182,12 @@ import os
 import string
 
 
-# Папка с образцами букв капчи
+# Папка с образцами цифр порта
 LETTER_DIR = 'digits'
 
 
-class CaptchaParser:
-    """Класс для парсинга капчи"""
+class PortImgParser:
+    """Класс для парсинга изображения с номером порта."""
 
     def __init__(self):
         self.letter_mask = {}
@@ -213,27 +213,22 @@ class CaptchaParser:
 
     def run(self, img):
         """Функция принимает объект Image из модуля PIL, парсит его и
-        возвращает распарсенную строку с текстом капчи.
+        возвращает распарсенную строку с текстом изображения.
 
         """
 
         im = img.convert('L')
 
-        # Очищение капчи
-        clear_captcha(im)
+        clear_img(im)
+        im = crop_text(im)
+        letters_img = get_letters_from_img(im)
 
-        # Обрезание текста капчи
-        im = crop_captcha_text(im)
-
-        # Список букв капчи
-        letters_captcha = get_letters_from_captcha(im)
-
-        captcha_text = ''
+        img_text = ''
 
         found_new_digit = set([file.replace('.png', '') for file in os.listdir(LETTER_DIR)])
 
-        for im_letter in letters_captcha:
-            # Получаем маску буквы капчи
+        for im_letter in letters_img:
+            # Получаем маску буквы
             mask = get_hash_mask_letter(im_letter)
             letter = self.mask_letter.get(mask)
 
@@ -246,8 +241,8 @@ class CaptchaParser:
 
                     found_new_digit.add(mask)
 
-                captcha_text += '-'
+                img_text += '-'
             else:
-                captcha_text += letter
+                img_text += letter
 
-        return captcha_text
+        return img_text
