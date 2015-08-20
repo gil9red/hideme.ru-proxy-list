@@ -6,14 +6,17 @@ __author__ = 'ipetrash'
 
 from urllib.parse import urljoin
 from urllib.request import urlopen, Request
-from parsing_port import PortImgParser
 from collections import namedtuple
 import logging
 import sys
-from PIL import Image
 from io import BytesIO
 import traceback
+from random import randint, choice
+
+from PIL import Image
 from lxml import etree
+
+from parsing_port import PortImgParser
 
 
 def get_logger(name, file='log.txt', encoding='utf8'):
@@ -41,6 +44,7 @@ def tag_text(el):
 
     Если передается строка, просто удаляются с концов пробельные символы
     и возвращает строка.
+
     """
 
     if isinstance(el, str):
@@ -48,9 +52,6 @@ def tag_text(el):
 
     text = ''.join([x for x in el.itertext()])
     return text.strip()
-
-
-from random import randint, choice
 
 
 def go_url(url, headers):
@@ -118,15 +119,16 @@ class HidemeRuParser:
         port_img = download_image(port_img_src, self.headers)
         if port_img is None:
             raise Exception('Не удалось загрузить картинку с портом. url: {}.'.format(port_img_src))
+
         logger.debug('Закончено скачивание картинки с портом.')
 
         # Разбираем картинку с портом
         port = self.port_parser.run(port_img)
-        if '-' not in port:
-            logger.debug('Картинка распарсена. port: %s.', port)
-            return port
-        else:
-            logger.warn('Картинка распарсена не полностью. port: %s.\n', port)
+        if '-' in port:
+            raise Exception('Картинка распарсена не полностью. port: {}.\n'.format(port))
+
+        logger.debug('Картинка распарсена. port: %s.', port)
+        return port
 
     def run(self, url='http://hideme.ru/proxy-list/'):
         """Функция парсит указанный адрес сайта hideme.ru,
@@ -154,18 +156,21 @@ class HidemeRuParser:
 
             for i, row in enumerate(rows, 1):
                 logger.debug('Начинаю разбирать %s строку с прокси.', i)
+
                 ip, port, country, city, speed, proxy_type, anonymity, checked = row.xpath('td')
 
-                port = self.process_el_port(url, port)
-                if port is None:
+                try:
+                    port = self.process_el_port(url, port)
+                    proxy_type = tag_text(proxy_type).split(', ')
+
+                    proxy = Proxy(tag_text(ip), port, tag_text(country), tag_text(city), tag_text(speed),
+                                  proxy_type, tag_text(anonymity), tag_text(checked))
+
+                    self.proxy_list.append(proxy)
+
+                except Exception as e:
+                    logger.warn(e)
                     continue
-
-                proxy_type = tag_text(proxy_type).split(', ')
-
-                proxy = Proxy(tag_text(ip), port, tag_text(country), tag_text(city), tag_text(speed),
-                              proxy_type, tag_text(anonymity), tag_text(checked))
-
-                self.proxy_list.append(proxy)
 
                 logger.info('Закончен парсинг строки с прокси: %s.\n', proxy)
 
