@@ -169,7 +169,7 @@ class HidemeRuParser:
                     self.proxy_list.append(proxy)
 
                 except Exception as e:
-                    logger.warn(e)
+                    logger.exception("Error:")
                     continue
 
                 logger.info('Закончен парсинг строки с прокси: %s.\n', proxy)
